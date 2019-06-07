@@ -16,11 +16,16 @@ public class Board : MonoBehaviour {
     public Material whitePieceMaterial;
     public Material blackPieceMaterial;
 
-    List<GameObject> whitePieces;
-    List<GameObject> blackPieces;
+    List<GameObject> whitePieces = new List<GameObject>();
+    List<GameObject> blackPieces = new List<GameObject>();
     
-    List<GameObject> whitePlayerObjs;
-    List<GameObject> blackPlayerObjs;
+    List<GameObject> whitePlayerObjs = new List<GameObject>();
+    List<GameObject> blackPlayerObjs = new List<GameObject>();
+
+    List<Player> whitePlayers = new List<Player>();
+    List<Player> blackPlayers = new List<Player>();
+
+    List<MoveTransaction> moveTransactions = new List<MoveTransaction>();
 
     
     List<GameObject> horzLines;
@@ -36,18 +41,41 @@ public class Board : MonoBehaviour {
     //        If we are iterating over the game object then we are brining a lot of unecessary data
     //        into the cache.
     struct Piece {
-        PieceColor color;
-        Vector2 pos;
+        public PieceColor color;
+        public Vector2 pos;
     };
 
     // @NOTE: these might diverge at some point so we'll define them separately. Not sure if this is good or not
     struct Player {
-        PieceColor color;
-        Vector2 pos;
+        public Vector2 pos;
+
+        // @TODO: this may not be enough...
+        public int length;
+
+        public Player(Vector2 pos_) {
+            pos = pos_;
+            length = 1;
+        }
     }
 
-    List<Player> whitePlayers;
-    List<Player> blackPlayers;
+    enum ActionType {
+        None,
+        Left,
+        Right,
+        Up,
+        Down,
+    }
+
+    struct MoveTransaction {
+        public PieceColor color;
+        public int index;
+        public GameObject obj;
+        
+        public Vector2 startPos;
+        public Vector2 endPos;
+    }
+
+    
 
     enum GamePhase {
         Setup,
@@ -57,7 +85,7 @@ public class Board : MonoBehaviour {
 
     GamePhase phase;
 
-    GameObject CreatePiece(int x, int y, bool black) {
+    GameObject CreatePieceObj(int x, int y, bool black) {
         GameObject o = new GameObject("piece");
 
         MeshFilter meshFilter = o.AddComponent<MeshFilter>();
@@ -73,7 +101,7 @@ public class Board : MonoBehaviour {
             meshRenderer.material = whitePieceMaterial;
         }
 
-        o.transform.position = new Vector3(x, y, 0);
+        o.transform.position = new Vector3(x + 0.5f, y + 0.5f, 0);
 
         o.transform.localScale = new Vector3(1, 1.0f, 0.25f);
 
@@ -97,9 +125,22 @@ public class Board : MonoBehaviour {
             meshRenderer.material = whitePieceMaterial;
         }
 
-        o.transform.position = new Vector3(x, y, 0);
+        o.transform.position = new Vector3(x + 0.5f, y + 0.5f, 0);
 
         o.transform.localScale = new Vector3(1, 1.0f, 0.25f);
+
+        Player p = new Player();
+        p.pos = new Vector2(x, y);
+        p.length = 1;
+
+        if (black) {
+            blackPlayerObjs.Add(o);
+            blackPlayers.Add(p);
+        }
+        else {
+            whitePlayerObjs.Add(o);
+            whitePlayers.Add(p);
+        }
 
         return o;
     }
@@ -113,9 +154,9 @@ public class Board : MonoBehaviour {
         blackPlayerObjs = new List<GameObject>();
 
         {
-            blackPlayerObjs.Add(CreatePlayer(width / 2, 0, true));
+            CreatePlayer(width / 2 - 1, 0, true);
 
-            whitePlayerObjs.Add(CreatePlayer(width / 2, height - 1, false));
+            CreatePlayer(width / 2, height - 1, false);
         }
 
         horzLines = new List<GameObject>();
@@ -136,7 +177,7 @@ public class Board : MonoBehaviour {
                         continue;
                     }
                 
-                    GameObject p = CreatePiece(x, y, black);
+                    GameObject p = CreatePieceObj(x, y, black);
                     blackPieces.Add(p);
                 }
             }
@@ -155,7 +196,7 @@ public class Board : MonoBehaviour {
                         continue;
                     }
                 
-                    GameObject p = CreatePiece(x, y, black);
+                    GameObject p = CreatePieceObj(x, y, black);
                     whitePieces.Add(p);
                 }
             }
@@ -193,11 +234,11 @@ public class Board : MonoBehaviour {
                 line.endWidth = 0.1f;
 
             
-                start.x = 0 - 0.5f;
-                start.y = y - 0.5f;
+                start.x = 0;
+                start.y = y;
                 
-                end.x = width - 0.5f;
-                end.y = y - 0.5f;
+                end.x = width;
+                end.y = y;
 
                 line.SetPosition(0, start);
                 line.SetPosition(1, end);
@@ -213,11 +254,11 @@ public class Board : MonoBehaviour {
                 line.startWidth = 0.1f;
                 line.endWidth = 0.1f;
 
-                start.x = x - 0.5f;
-                start.y = 0 - 0.5f;
+                start.x = x;
+                start.y = 0;
                 
-                end.x = x - 0.5f;
-                end.y = height - 0.5f;
+                end.x = x;
+                end.y = height;
 
                 line.SetPosition(0, start);
                 line.SetPosition(1, end);
@@ -225,7 +266,95 @@ public class Board : MonoBehaviour {
         }
     }
 
+    Vector3 Pos2DTo3D(Vector2 pos) {
+        return new Vector3(pos.x + 0.5f, pos.y + 0.5f, 0);
+    }
+    
+    ActionType GetPlayerAction() {
+        ActionType type = ActionType.None;
+
+        if (Input.GetKeyDown(KeyCode.W)) {
+            type = ActionType.Up;
+        }
+        if (Input.GetKeyDown(KeyCode.S)) {
+            type = ActionType.Down;
+        }
+        if (Input.GetKeyDown(KeyCode.A)) {
+            type = ActionType.Left;
+        }
+        if (Input.GetKeyDown(KeyCode.D)) {
+            type = ActionType.Right;
+        }
+
+
+        return type;
+    }
+
+    Vector2 ActionTypeToDirection(ActionType action) {
+        Vector2 dir = new Vector2();
+        
+        if (Input.GetKeyDown(KeyCode.W)) {
+            dir.y = 1;
+        }
+        if (Input.GetKeyDown(KeyCode.S)) {
+            dir.y = -1;
+        }
+        if (Input.GetKeyDown(KeyCode.A)) {
+            dir.x = -1;
+        }
+        if (Input.GetKeyDown(KeyCode.D)) {
+            dir.x = 1;
+        }
+
+        return dir;
+    }
+
+    void CreateMoveTransactions(List<Player> players, List<GameObject> playerObjs, ActionType action) {
+        Vector2 dir  = ActionTypeToDirection(action);
+
+        Debug.Log(dir);
+
+        for (int i = 0; i < players.Count; i++) {
+            Player p = players[i];
+            
+            MoveTransaction move = new MoveTransaction();
+
+            move.index = i;
+            move.obj = playerObjs[i];
+            move.startPos = p.pos;
+            move.endPos = p.pos + dir;
+
+            moveTransactions.Add(move);
+        }
+        
+        // @TODO: create moves for pieces of both colors, and invalidate certain moves
+        // What happens when you push against a structure that has a part that doesnt move?
+        // Does nothing move, or do we allow the players to become separated? Could be interesting!
+    }
+
+    void ProcessMoves() {
+        for (int i = 0; i < moveTransactions.Count; i++) {
+            MoveTransaction move = moveTransactions[i];
+
+            // @TODO: know if its a player, which color it is, and the obj
+            blackPlayers[move.index] = new Player(move.endPos);
+
+            move.obj.transform.position = Pos2DTo3D(move.endPos);
+        }
+
+        moveTransactions.Clear();
+    }
+
     void Update () {
+
+        ActionType action = GetPlayerAction();
+
+        if (action != ActionType.None) {
+            
+            CreateMoveTransactions(blackPlayers, blackPlayerObjs, action);
+            
+            ProcessMoves();
+        }
 
 	switch (phase) {
             case GamePhase.Setup : {
@@ -233,7 +362,7 @@ public class Board : MonoBehaviour {
             } break;
 
             case GamePhase.Main : {
-
+                
             } break;
 
             case GamePhase.End : {
