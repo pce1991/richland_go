@@ -19,12 +19,35 @@ public class Board : MonoBehaviour {
     List<GameObject> whitePieces;
     List<GameObject> blackPieces;
     
-    List<GameObject> whitePlayers;
-    List<GameObject> blackPlayers;
+    List<GameObject> whitePlayerObjs;
+    List<GameObject> blackPlayerObjs;
 
     
     List<GameObject> horzLines;
     List<GameObject> vertLines;
+
+    enum PieceColor {
+        Black,
+        White
+    }
+
+    // @NOTE: we dont need a whole bulky GameObject when doing calculations for our game.
+    //        When we move something we dont need the renderer, the mesh, the 3D transform even
+    //        If we are iterating over the game object then we are brining a lot of unecessary data
+    //        into the cache.
+    struct Piece {
+        PieceColor color;
+        Vector2 pos;
+    };
+
+    // @NOTE: these might diverge at some point so we'll define them separately. Not sure if this is good or not
+    struct Player {
+        PieceColor color;
+        Vector2 pos;
+    }
+
+    List<Player> whitePlayers;
+    List<Player> blackPlayers;
 
     enum GamePhase {
         Setup,
@@ -86,13 +109,13 @@ public class Board : MonoBehaviour {
         whitePieces = new List<GameObject>();
         blackPieces = new List<GameObject>();
 
-        whitePlayers = new List<GameObject>();
-        blackPlayers = new List<GameObject>();
+        whitePlayerObjs = new List<GameObject>();
+        blackPlayerObjs = new List<GameObject>();
 
         {
-            blackPlayers.Add(CreatePlayer(width / 2, 0, true));
+            blackPlayerObjs.Add(CreatePlayer(width / 2, 0, true));
 
-            whitePlayers.Add(CreatePlayer(width / 2, height - 1, false));
+            whitePlayerObjs.Add(CreatePlayer(width / 2, height - 1, false));
         }
 
         horzLines = new List<GameObject>();
